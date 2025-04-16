@@ -1,0 +1,56 @@
+#!/usr/bin/python3
+
+import os
+import re
+from PIL import Image
+from datetime import datetime
+
+def clean_text(text):
+    """Remove leading/trailing spaces and replace inner spaces with hyphens."""
+    return re.sub(r'\s+', '-', text.strip())
+
+def get_exif_data(filename):
+    """Extract EXIF data from an image."""
+    try:
+        with Image.open(filename) as img:
+            exif_data = img._getexif()
+        return exif_data if exif_data else {}
+    except IOError:
+        return {}
+
+def format_filename(date, camera_make, camera_model, ext, counter=None):
+    """Format the filename based on the given data."""
+    date_str = date.strftime("%Y%m%d_%H%M%S")
+    camera_info = f"{clean_text(camera_make)}-{clean_text(camera_model)}"
+    counter_str = f"-{counter:03d}" if counter is not None else ""
+    return f"{date_str}{counter_str}-{camera_info}.{ext.upper()}"
+
+def rename_photos():
+    """Rename photos in the current directory."""
+    for filename in os.listdir('.'):
+        if filename.lower().endswith(('.jpg', '.jpeg', '.png')):
+            exif = get_exif_data(filename)
+
+            # Extract date, camera make, and camera model from EXIF data
+            date = datetime.strptime(exif.get(306), '%Y:%m:%d %H:%M:%S') if 306 in exif else None
+            camera_make = exif.get(271, '') if 271 in exif else ''
+            camera_model = exif.get(272, '') if 272 in exif else ''
+
+            if date and camera_make and camera_model:
+                new_name_base = format_filename(date, camera_make, camera_model, filename.split('.')[-1])
+                new_name = new_name_base
+                counter = 1
+
+                # Check for duplicates
+                while os.path.exists(new_name):
+                    new_name = format_filename(date, camera_make, camera_model, filename.split('.')[-1], counter)
+                    counter += 1
+
+                os.rename(filename, new_name)
+                print(f'Renamed "{filename}" to "{new_name}"')
+            else:
+                print(f'Skipped "{filename}": Missing EXIF data')
+        else:
+            print(f'Skipped "{filename}": Not a supported image file')
+
+rename_photos()
