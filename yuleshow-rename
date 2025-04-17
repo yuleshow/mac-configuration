@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 
 import os
 import re
@@ -6,51 +6,55 @@ from PIL import Image
 from datetime import datetime
 
 def clean_text(text):
-    """Remove leading/trailing spaces and replace inner spaces with hyphens."""
+    """清理品牌和型號用於檔名"""
     return re.sub(r'\s+', '-', text.strip())
 
-def get_exif_data(filename):
-    """Extract EXIF data from an image."""
+def get_exif_data(filepath):
+    """取得 EXIF 資料"""
     try:
-        with Image.open(filename) as img:
-            exif_data = img._getexif()
-        return exif_data if exif_data else {}
-    except IOError:
+        with Image.open(filepath) as img:
+            return img._getexif() or {}
+    except Exception:
         return {}
 
-def format_filename(date, camera_make, camera_model, ext, counter=None):
-    """Format the filename based on the given data."""
+def format_filename(date, make, model, ext, counter=None):
+    """產生新檔名"""
     date_str = date.strftime("%Y%m%d_%H%M%S")
-    camera_info = f"{clean_text(camera_make)}-{clean_text(camera_model)}"
+    camera_info = f"{clean_text(make)}-{clean_text(model)}"
     counter_str = f"-{counter:03d}" if counter is not None else ""
     return f"{date_str}{counter_str}-{camera_info}.{ext.upper()}"
 
 def rename_photos():
-    """Rename photos in the current directory."""
+    """主函式：批次重新命名照片"""
+    seen_names = {}
     for filename in os.listdir('.'):
-        if filename.lower().endswith(('.jpg', '.jpeg', '.png')):
-            exif = get_exif_data(filename)
+        if not filename.lower().endswith(('.jpg', '.jpeg')):
+            continue
 
-            # Extract date, camera make, and camera model from EXIF data
-            date = datetime.strptime(exif.get(306), '%Y:%m:%d %H:%M:%S') if 306 in exif else None
-            camera_make = exif.get(271, '') if 271 in exif else ''
-            camera_model = exif.get(272, '') if 272 in exif else ''
+        exif = get_exif_data(filename)
+        date_str = exif.get(36867)  # DateTimeOriginal
+        if not date_str:
+            print(f"❌ 跳過：{filename}（無 DateTimeOriginal）")
+            continue
 
-            if date and camera_make and camera_model:
-                new_name_base = format_filename(date, camera_make, camera_model, filename.split('.')[-1])
-                new_name = new_name_base
-                counter = 1
+        try:
+            date = datetime.strptime(date_str, "%Y:%m:%d %H:%M:%S")
+        except Exception:
+            print(f"⚠️ 格式錯誤：{filename} 的日期 {date_str}")
+            continue
 
-                # Check for duplicates
-                while os.path.exists(new_name):
-                    new_name = format_filename(date, camera_make, camera_model, filename.split('.')[-1], counter)
-                    counter += 1
+        make = exif.get(271, "Unknown")   # Make
+        model = exif.get(272, "Camera")   # Model
+        ext = os.path.splitext(filename)[1][1:]
 
-                os.rename(filename, new_name)
-                print(f'Renamed "{filename}" to "{new_name}"')
-            else:
-                print(f'Skipped "{filename}": Missing EXIF data')
-        else:
-            print(f'Skipped "{filename}": Not a supported image file')
+        # 檢查是否有重複
+        base_name = format_filename(date, make, model, ext)
+        count = seen_names.get(base_name, 0)
+        new_name = format_filename(date, make, model, ext, count if count > 0 else None)
+        seen_names[base_name] = count + 1
 
-rename_photos()
+        os.rename(filename, new_name)
+        print(f"✅ {filename} → {new_name}")
+
+if __name__ == "__main__":
+    rename_photos()
