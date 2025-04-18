@@ -39,7 +39,7 @@ def rename_and_move_photos():
             exif = get_exif_data(filename)
 
             # Extract date, camera make, and camera model from EXIF data
-            date = datetime.strptime(exif.get(306), '%Y:%m:%d %H:%M:%S') if 306 in exif else None
+            date = datetime.strptime(exif.get(36867), '%Y:%m:%d %H:%M:%S') if 36867 in exif else None
             camera_make = exif.get(271, '') if 271 in exif else ''
             camera_model = exif.get(272, '') if 272 in exif else ''
 
